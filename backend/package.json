@@ -13,12 +13,14 @@
   "description": "",
   "devDependencies": {
     "@types/express": "^5.0.0",
+    "@types/ws": "^8.5.14",
     "install": "^0.13.0",
     "npm": "^11.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.2"
   },
   "dependencies": {
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "ws": "^8.18.1"
   }
 }
