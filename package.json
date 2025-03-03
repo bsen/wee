@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon --exec ts-node-esm app.ts",
-    "start": "ts-node-esm app.ts"
+    "dev": "nodemon --exec ts-node-esm server.ts",
+    "start": "ts-node-esm server.ts"
   },
   "keywords": [],
   "author": "",
