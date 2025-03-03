@@ -1,7 +1,5 @@
 "use client";
-
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
 
 export default function Home() {
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -245,6 +243,9 @@ export default function Home() {
             className="w-full h-full object-cover"
           />
         </div>
+      </div>
+      <div className="absolute top-5 right-5 text-sm border border-neutral-800 text-neutral-400 px-4 py-2 rounded-lg z-5 max-w-64 truncate">
+        {status}
       </div>
     </div>
   );
