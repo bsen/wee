@@ -46,7 +46,7 @@ export default function Home() {
   }
 
   function connectToServer() {
-    socketRef.current = new WebSocket("ws://localhost:8080");
+    socketRef.current = new WebSocket("ws://35.154.45.251:8080");
 
     socketRef.current.onopen = () => {
       setStatus("Waiting for another person...");
