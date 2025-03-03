@@ -12,6 +12,7 @@ const clients: WebSocket[] = [];
 const clientIds = new Map<WebSocket, number>();
 
 wss.on("connection", (ws) => {
+  console.log("Client connected");
   if (clients.length >= 2) {
     ws.send(
       JSON.stringify({
@@ -26,6 +27,8 @@ wss.on("connection", (ws) => {
   const clientId = clients.length;
   clients.push(ws);
   clientIds.set(ws, clientId);
+
+  console.log("Client connected", clientId);
 
   ws.send(
     JSON.stringify({
@@ -83,5 +86,5 @@ wss.on("connection", (ws) => {
 
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
-  console.log(`Video call server running on port ${PORT}`);
+  console.log(`ws://localhost:${PORT}`);
 });

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "npx ts-node app.ts"
+    "dev": "nodemon --exec ts-node-esm app.ts",
+    "start": "ts-node-esm app.ts"
   },
   "keywords": [],
   "author": "",
@@ -15,6 +16,7 @@
     "@types/express": "^5.0.0",
     "@types/ws": "^8.5.14",
     "install": "^0.13.0",
+    "nodemon": "^3.0.3",
     "npm": "^11.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.2"
