@@ -246,30 +246,26 @@
     </div>
 
     <script>
-      // DOM elements
       const localVideo = document.getElementById("localVideo");
       const remoteVideo = document.getElementById("remoteVideo");
       const statusElement = document.getElementById("status");
       const placeholder = document.getElementById("placeholder");
 
-      // Variables
       let socket = null;
       let localStream = null;
       let peerConnection = null;
       let isInitiator = false;
 
-      // Initialize
       init();
 
       async function init() {
         try {
-          // More specific video constraints with higher quality settings
           const stream = await navigator.mediaDevices.getUserMedia({
             video: {
               width: { min: 640, ideal: 1920, max: 1920 },
               height: { min: 480, ideal: 1080, max: 1080 },
               frameRate: { min: 24, ideal: 30, max: 30 },
-              // Request higher quality
+
               aspectRatio: 16 / 9,
             },
             audio: {
@@ -353,7 +349,6 @@
       }
 
       async function startCall() {
-        // Enhanced ICE server configuration with additional STUN servers
         peerConnection = new RTCPeerConnection({
           iceServers: [
             { urls: "stun:stun.l.google.com:19302" },
@@ -362,7 +357,7 @@
             { urls: "stun:stun3.l.google.com:19302" },
             { urls: "stun:stun4.l.google.com:19302" },
           ],
-          // Add these options to improve quality
+
           iceTransportPolicy: "all",
           iceCandidatePoolSize: 10,
         });
@@ -404,7 +399,6 @@
           };
 
           if (isInitiator) {
-            // Create offer with specific codec preferences and bitrate
             const offerOptions = {
               offerToReceiveAudio: true,
               offerToReceiveVideo: true,
@@ -412,7 +406,6 @@
 
             const offer = await peerConnection.createOffer(offerOptions);
 
-            // Set higher bitrate for video
             const highBitrateOffer = setMediaBitrates(offer);
 
             await peerConnection.setLocalDescription(highBitrateOffer);
@@ -429,17 +422,14 @@
         }
       }
 
-      // Function to set higher bitrates in SDP
       function setMediaBitrates(sdp) {
         if (!sdp) return sdp;
 
-        // Set video bitrate to 2.5 Mbps for high quality
         sdp.sdp = sdp.sdp.replace(
           /a=mid:video\r\n/g,
           "a=mid:video\r\nb=AS:2500\r\n"
         );
 
-        // Set audio bitrate to 128 kbps for good quality
         sdp.sdp = sdp.sdp.replace(
           /a=mid:audio\r\n/g,
           "a=mid:audio\r\nb=AS:128\r\n"
@@ -459,7 +449,6 @@
           );
           const answer = await peerConnection.createAnswer();
 
-          // Set higher bitrate for the answer as well
           const highBitrateAnswer = setMediaBitrates(answer);
 
           await peerConnection.setLocalDescription(highBitrateAnswer);
