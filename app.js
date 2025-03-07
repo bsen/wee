@@ -1,6 +1,7 @@
-import { WebSocketServer, WebSocket } from "ws";
-import http from "http";
-
+const { WebSocketServer, WebSocket } = require("ws");
+const http = require("http");
+const redis = require("./redis");
+const { storeClientId } = require("./clientId");
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("Video Call Server Running");
@@ -8,12 +9,10 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server });
 
-const clients: WebSocket[] = [];
-const clientIds = new Map<WebSocket, number>();
+const clients = [];
+const clientIds = new Map();
 
 wss.on("connection", (ws) => {
-  console.log("New client connected");
-
   if (clients.length >= 2) {
     console.log("Room is full, rejecting connection");
     ws.send(
@@ -27,6 +26,7 @@ wss.on("connection", (ws) => {
   }
 
   const clientId = clients.length;
+  storeClientId(clientId);
   clients.push(ws);
   clientIds.set(ws, clientId);
 
@@ -106,6 +106,17 @@ wss.on("connection", (ws) => {
 });
 
 const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => {
-  console.log(`WebSocket server running at ws://localhost:${PORT}`);
-});
+
+async function startServer() {
+  try {
+    await redis.connect();
+    server.listen(PORT, () => {
+      console.log(`WebSocket server running at \nws://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.log("error in starting server: ", error);
+    throw error;
+  }
+}
+
+startServer().catch(console.error);
