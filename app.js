@@ -1,55 +1,49 @@
 const { WebSocketServer, WebSocket } = require("ws");
 const http = require("http");
 const redis = require("./redis");
-const { storeClientId } = require("./clientId");
+const { v4: uuidv4 } = require("uuid");
+
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Video Call Server Running");
+  res.end("Random Video Chat Server Running");
 });
 
 const wss = new WebSocketServer({ server });
 
-const clients = [];
-const clientIds = new Map();
+const waitingClients = [];
+const activePairs = new Map();
 
 wss.on("connection", (ws) => {
-  if (clients.length >= 2) {
-    console.log("Room is full, rejecting connection");
-    ws.send(
-      JSON.stringify({
-        type: "error",
-        message: "Room is full",
-      })
-    );
-    ws.close();
-    return;
-  }
+  const clientId = uuidv4();
+  console.log(`Client ${clientId.substring(0, 8)} connected`);
 
-  const clientId = clients.length;
-  storeClientId(clientId);
-  clients.push(ws);
-  clientIds.set(ws, clientId);
-
-  console.log(
-    `Client #${clientId} connected. Total clients: ${clients.length}`
-  );
+  waitingClients.push(ws);
 
   ws.send(
     JSON.stringify({
       type: "connection",
       id: clientId,
-      totalClients: clients.length,
+      message: "Waiting for a partner...",
     })
   );
 
-  if (clients.length === 2) {
-    console.log("Two clients connected, starting call");
-    clients.forEach((client) => {
-      client.send(
-        JSON.stringify({
-          type: "ready",
-        })
-      );
+  if (waitingClients.length >= 2) {
+    const client1 = waitingClients.shift();
+    const client2 = waitingClients.shift();
+
+    activePairs.set(client1, client2);
+    activePairs.set(client2, client1);
+
+    [client1, client2].forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(
+          JSON.stringify({
+            type: "paired",
+            message:
+              "You've been paired with someone! You can start your call.",
+          })
+        );
+      }
     });
   }
 
@@ -57,7 +51,10 @@ wss.on("connection", (ws) => {
     try {
       const data = JSON.parse(message.toString());
       console.log(
-        `Received message type: ${data.type} from client #${clientIds.get(ws)}`
+        `Received message type: ${data.type} from client ${clientId.substring(
+          0,
+          8
+        )}`
       );
 
       if (
@@ -65,39 +62,41 @@ wss.on("connection", (ws) => {
         data.type === "answer" ||
         data.type === "ice-candidate"
       ) {
-        const otherClient = clients.find((client) => client !== ws);
-        if (otherClient && otherClient.readyState === WebSocket.OPEN) {
-          console.log(`Forwarding ${data.type} to other client`);
-          otherClient.send(message.toString());
+        const partner = activePairs.get(ws);
+        if (partner && partner.readyState === WebSocket.OPEN) {
+          partner.send(message.toString());
         }
       }
     } catch (error) {
-      console.log("Error processing message");
+      console.log("Error processing message:", error);
     }
   });
 
   ws.on("close", () => {
-    const clientId = clientIds.get(ws);
-    const index = clients.indexOf(ws);
-
-    if (index !== -1) {
-      clients.splice(index, 1);
-      clientIds.delete(ws);
-      console.log(
-        `Client #${clientId} disconnected. Remaining clients: ${clients.length}`
-      );
+    const waitingIndex = waitingClients.indexOf(ws);
+    if (waitingIndex !== -1) {
+      waitingClients.splice(waitingIndex, 1);
     }
 
-    if (clients.length > 0) {
-      console.log("Notifying remaining client about disconnection");
-      clients.forEach((client) => {
-        client.send(
+    const partner = activePairs.get(ws);
+    if (partner) {
+      activePairs.delete(partner);
+      activePairs.delete(ws);
+
+      if (partner.readyState === WebSocket.OPEN) {
+        partner.send(
           JSON.stringify({
-            type: "disconnected",
+            type: "partnerLeft",
+            message:
+              "Your partner has disconnected. Waiting for a new partner...",
           })
         );
-      });
+
+        waitingClients.push(partner);
+      }
     }
+
+    console.log(`Client ${clientId.substring(0, 8)} disconnected`);
   });
 
   ws.on("error", (error) => {

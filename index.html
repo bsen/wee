@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Video Call</title>
+    <title>Weee | Random Video Chat</title>
     <style>
       * {
         margin: 0;
@@ -189,6 +189,32 @@
         -webkit-transform: scaleX(-1);
         -moz-transform: scaleX(-1);
       }
+
+      /* Add a button for finding a new partner */
+      .next-button {
+        position: absolute;
+        bottom: 5rem;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: #525252;
+        color: white;
+        border: none;
+        border-radius: 0.5rem;
+        padding: 0.75rem 1.5rem;
+        font-size: 1rem;
+        cursor: pointer;
+        z-index: 10;
+        transition: background-color 0.2s;
+      }
+
+      .next-button:hover {
+        background-color: #737373;
+      }
+
+      .next-button:disabled {
+        background-color: #262626;
+        cursor: not-allowed;
+      }
     </style>
   </head>
   <body>
@@ -243,6 +269,11 @@
       >
         Connecting...
       </div>
+
+      <!-- Add a button to find a new partner -->
+      <button id="nextButton" class="next-button" disabled>
+        Find Someone New
+      </button>
     </div>
 
     <script>
@@ -250,11 +281,12 @@
       const remoteVideo = document.getElementById("remoteVideo");
       const statusElement = document.getElementById("status");
       const placeholder = document.getElementById("placeholder");
+      const nextButton = document.getElementById("nextButton");
 
       let socket = null;
       let localStream = null;
       let peerConnection = null;
-      let isInitiator = false;
+      let clientId = null;
 
       init();
 
@@ -265,7 +297,6 @@
               width: { min: 640, ideal: 1920, max: 1920 },
               height: { min: 480, ideal: 1080, max: 1080 },
               frameRate: { min: 24, ideal: 30, max: 30 },
-
               aspectRatio: 16 / 9,
             },
             audio: {
@@ -305,15 +336,18 @@
 
       function handleMessage(event) {
         const data = JSON.parse(event.data);
+        console.log("Received message:", data);
 
         switch (data.type) {
           case "connection":
-            isInitiator = data.id === 0;
+            clientId = data.id;
+            setStatus(data.message || "Waiting for a partner...");
             break;
 
-          case "ready":
-            setStatus("Another person joined. Starting call...");
+          case "paired":
+            setStatus("Connected with a partner!");
             startCall();
+            nextButton.disabled = false;
             break;
 
           case "offer":
@@ -336,19 +370,29 @@
             }
             break;
 
-          case "disconnected":
-            setStatus("Other person left. Waiting for someone new...");
+          case "partnerLeft":
+            setStatus(
+              data.message || "Partner disconnected. Waiting for someone new..."
+            );
             showPlaceholder(true);
-            if (peerConnection) {
-              peerConnection.close();
-              peerConnection = null;
-              remoteVideo.srcObject = null;
-            }
+            resetConnection();
+            nextButton.disabled = true;
+            break;
+
+          case "waiting":
+            setStatus(data.message || "Waiting for a new partner...");
+            showPlaceholder(true);
+            resetConnection();
+            nextButton.disabled = true;
             break;
         }
       }
 
       async function startCall() {
+        if (peerConnection) {
+          resetConnection();
+        }
+
         peerConnection = new RTCPeerConnection({
           iceServers: [
             { urls: "stun:stun.l.google.com:19302" },
@@ -357,7 +401,6 @@
             { urls: "stun:stun3.l.google.com:19302" },
             { urls: "stun:stun4.l.google.com:19302" },
           ],
-
           iceTransportPolicy: "all",
           iceCandidatePoolSize: 10,
         });
@@ -398,19 +441,17 @@
             }
           };
 
-          if (isInitiator) {
+          try {
             const offerOptions = {
               offerToReceiveAudio: true,
               offerToReceiveVideo: true,
             };
 
             const offer = await peerConnection.createOffer(offerOptions);
-
             const highBitrateOffer = setMediaBitrates(offer);
-
             await peerConnection.setLocalDescription(highBitrateOffer);
 
-            if (socket) {
+            if (socket && socket.readyState === WebSocket.OPEN) {
               socket.send(
                 JSON.stringify({
                   type: "offer",
@@ -418,6 +459,8 @@
                 })
               );
             }
+          } catch (error) {
+            console.error("Error creating offer:", error);
           }
         }
       }
@@ -444,39 +487,46 @@
         }
 
         if (peerConnection && data.sdp) {
-          await peerConnection.setRemoteDescription(
-            new RTCSessionDescription(data.sdp)
-          );
-          const answer = await peerConnection.createAnswer();
-
-          const highBitrateAnswer = setMediaBitrates(answer);
-
-          await peerConnection.setLocalDescription(highBitrateAnswer);
-
-          if (socket) {
-            socket.send(
-              JSON.stringify({
-                type: "answer",
-                sdp: peerConnection.localDescription,
-              })
+          try {
+            await peerConnection.setRemoteDescription(
+              new RTCSessionDescription(data.sdp)
             );
+            const answer = await peerConnection.createAnswer();
+            const highBitrateAnswer = setMediaBitrates(answer);
+            await peerConnection.setLocalDescription(highBitrateAnswer);
+
+            if (socket && socket.readyState === WebSocket.OPEN) {
+              socket.send(
+                JSON.stringify({
+                  type: "answer",
+                  sdp: peerConnection.localDescription,
+                })
+              );
+            }
+          } catch (error) {
+            console.error("Error handling offer:", error);
           }
         }
       }
 
-      function cleanup() {
+      function resetConnection() {
         if (peerConnection) {
           peerConnection.close();
           peerConnection = null;
         }
+        remoteVideo.srcObject = null;
+      }
+
+      function cleanup() {
+        resetConnection();
 
         if (localStream) {
           localStream.getTracks().forEach((track) => track.stop());
           localVideo.srcObject = null;
         }
 
-        remoteVideo.srcObject = null;
         showPlaceholder(true);
+        nextButton.disabled = true;
       }
 
       function setStatus(message) {
@@ -486,6 +536,17 @@
       function showPlaceholder(show) {
         placeholder.style.display = show ? "flex" : "none";
       }
+
+      nextButton.addEventListener("click", () => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          setStatus("Looking for a new partner...");
+          showPlaceholder(true);
+          resetConnection();
+          nextButton.disabled = true;
+
+          socket.send(JSON.stringify({ type: "next" }));
+        }
+      });
     </script>
   </body>
 </html>
