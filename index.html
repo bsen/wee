@@ -103,7 +103,6 @@
       }
 
       function connectToServer() {
-        // Use a relative WebSocket URL that will work with both HTTP and HTTPS
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const wsUrl = `${protocol}//${window.location.host}`;
         socket = new WebSocket(wsUrl);
@@ -183,6 +182,16 @@
             { urls: "stun:stun2.l.google.com:19302" },
             { urls: "stun:stun3.l.google.com:19302" },
             { urls: "stun:stun4.l.google.com:19302" },
+            {
+              urls: "turn:openrelay.metered.ca:80",
+              username: "openrelayproject",
+              credential: "openrelayproject",
+            },
+            {
+              urls: "turn:openrelay.metered.ca:443",
+              username: "openrelayproject",
+              credential: "openrelayproject",
+            },
           ],
           iceTransportPolicy: "all",
           iceCandidatePoolSize: 10,
