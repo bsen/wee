@@ -1,6 +1,5 @@
 const { WebSocketServer, WebSocket } = require("ws");
 const http = require("http");
-const redis = require("./redis");
 const { v4: uuidv4 } = require("uuid");
 
 const server = http.createServer((req, res) => {
@@ -106,16 +105,6 @@ wss.on("connection", (ws) => {
 
 const PORT = process.env.PORT || 8080;
 
-async function startServer() {
-  try {
-    await redis.connect();
-    server.listen(PORT, () => {
-      console.log(`WebSocket server running at \nws://localhost:${PORT}`);
-    });
-  } catch (error) {
-    console.log("error in starting server: ", error);
-    throw error;
-  }
-}
-
-startServer().catch(console.error);
+server.listen(PORT, () => {
+  console.log(`WebSocket server running at \nws://localhost:${PORT}`);
+});
