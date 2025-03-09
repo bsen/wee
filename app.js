@@ -14,7 +14,7 @@ const activePairs = new Map();
 
 wss.on("connection", (ws) => {
   const clientId = uuidv4();
-  console.log(`Client ${clientId.substring(0, 8)} connected`);
+  console.log(`Client ${clientId} connected`);
 
   waitingClients.push(ws);
 
@@ -49,12 +49,6 @@ wss.on("connection", (ws) => {
   ws.on("message", (message) => {
     try {
       const data = JSON.parse(message.toString());
-      console.log(
-        `Received message type: ${data.type} from client ${clientId.substring(
-          0,
-          8
-        )}`
-      );
 
       if (
         data.type === "offer" ||
