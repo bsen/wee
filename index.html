@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Weee</title>
+    <title>Wee Chat</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -103,7 +103,10 @@
       }
 
       function connectToServer() {
-        socket = new WebSocket("ws://localhost:8080");
+        // Use a relative WebSocket URL that will work with both HTTP and HTTPS
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsUrl = `${protocol}//${window.location.host}`;
+        socket = new WebSocket(wsUrl);
 
         socket.onopen = () => {
           setStatus("Waiting for another person...");
