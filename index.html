@@ -131,7 +131,10 @@
 
           case "paired":
             setStatus("Connected with a partner!");
-            startCall();
+            break;
+
+          case "start-call":
+            startCall(true);
             break;
 
           case "offer":
@@ -139,11 +142,7 @@
             break;
 
           case "answer":
-            if (peerConnection && data.sdp) {
-              peerConnection.setRemoteDescription(
-                new RTCSessionDescription(data.sdp)
-              );
-            }
+            handleAnswer(data);
             break;
 
           case "ice-candidate":
@@ -170,7 +169,7 @@
         }
       }
 
-      async function startCall() {
+      async function startCall(isCaller) {
         if (peerConnection) {
           resetConnection();
         }
@@ -225,6 +224,7 @@
           };
 
           peerConnection.onconnectionstatechange = () => {
+            console.log("Connection state:", peerConnection.connectionState);
             if (
               peerConnection &&
               peerConnection.connectionState === "connected"
@@ -233,26 +233,32 @@
             }
           };
 
-          try {
-            const offerOptions = {
-              offerToReceiveAudio: true,
-              offerToReceiveVideo: true,
-            };
+          peerConnection.onsignalingstatechange = () => {
+            console.log("Signaling state:", peerConnection.signalingState);
+          };
 
-            const offer = await peerConnection.createOffer(offerOptions);
-            const highBitrateOffer = setMediaBitrates(offer);
-            await peerConnection.setLocalDescription(highBitrateOffer);
+          if (isCaller) {
+            try {
+              const offerOptions = {
+                offerToReceiveAudio: true,
+                offerToReceiveVideo: true,
+              };
 
-            if (socket && socket.readyState === WebSocket.OPEN) {
-              socket.send(
-                JSON.stringify({
-                  type: "offer",
-                  sdp: peerConnection.localDescription,
-                })
-              );
+              const offer = await peerConnection.createOffer(offerOptions);
+              const highBitrateOffer = setMediaBitrates(offer);
+              await peerConnection.setLocalDescription(highBitrateOffer);
+
+              if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(
+                  JSON.stringify({
+                    type: "offer",
+                    sdp: peerConnection.localDescription,
+                  })
+                );
+              }
+            } catch (error) {
+              console.error("Error creating offer:", error);
             }
-          } catch (error) {
-            console.error("Error creating offer:", error);
           }
         }
       }
@@ -275,17 +281,33 @@
 
       async function handleOffer(data) {
         if (!peerConnection) {
-          startCall();
+          startCall(false);
         }
 
         if (peerConnection && data.sdp) {
           try {
+            console.log(
+              "Signaling state before setting remote offer:",
+              peerConnection.signalingState
+            );
+
             await peerConnection.setRemoteDescription(
               new RTCSessionDescription(data.sdp)
             );
+
+            console.log(
+              "Signaling state after setting remote offer:",
+              peerConnection.signalingState
+            );
+
             const answer = await peerConnection.createAnswer();
             const highBitrateAnswer = setMediaBitrates(answer);
             await peerConnection.setLocalDescription(highBitrateAnswer);
+
+            console.log(
+              "Signaling state after setting local answer:",
+              peerConnection.signalingState
+            );
 
             if (socket && socket.readyState === WebSocket.OPEN) {
               socket.send(
@@ -297,6 +319,34 @@
             }
           } catch (error) {
             console.error("Error handling offer:", error);
+          }
+        }
+      }
+
+      async function handleAnswer(data) {
+        if (peerConnection && data.sdp) {
+          try {
+            console.log(
+              "Signaling state before setting remote answer:",
+              peerConnection.signalingState
+            );
+
+            if (peerConnection.signalingState === "have-local-offer") {
+              await peerConnection.setRemoteDescription(
+                new RTCSessionDescription(data.sdp)
+              );
+              console.log(
+                "Signaling state after setting remote answer:",
+                peerConnection.signalingState
+              );
+            } else {
+              console.warn(
+                "Cannot set remote answer in state:",
+                peerConnection.signalingState
+              );
+            }
+          } catch (error) {
+            console.error("Error handling answer:", error);
           }
         }
       }
