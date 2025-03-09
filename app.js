@@ -1,10 +1,36 @@
 const { WebSocketServer, WebSocket } = require("ws");
 const http = require("http");
 const { v4: uuidv4 } = require("uuid");
+const fs = require("fs");
+const path = require("path");
 
 const server = http.createServer((req, res) => {
-  res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Random Video Chat Server Running");
+  const url = req.url;
+
+  if (url === "/" || url === "/index.html") {
+    fs.readFile(path.join(__dirname, "index.html"), (err, data) => {
+      if (err) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("Error loading index.html");
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(data);
+    });
+  } else if (url === "/style.css") {
+    fs.readFile(path.join(__dirname, "style.css"), (err, data) => {
+      if (err) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("Error loading style.css");
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/css" });
+      res.end(data);
+    });
+  } else {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Not Found");
+  }
 });
 
 const wss = new WebSocketServer({ server });
@@ -14,7 +40,7 @@ const activePairs = new Map();
 
 wss.on("connection", (ws) => {
   const clientId = uuidv4();
-  console.log(`Client ${clientId} connected`);
+  console.log(`Client ${clientId.substring(0, 8)} connected`);
 
   waitingClients.push(ws);
 
@@ -100,5 +126,6 @@ wss.on("connection", (ws) => {
 const PORT = process.env.PORT || 8080;
 
 server.listen(PORT, () => {
-  console.log(`WebSocket server running at \nws://localhost:${PORT}`);
+  console.log(`http://localhost:${PORT}`);
+  console.log(`ws://localhost:${PORT}`);
 });
