@@ -127,30 +127,39 @@
           case "connection":
             clientId = data.id;
             setStatus(data.message || "Waiting for a partner...");
+            showPlaceholder(true);
             break;
 
           case "paired":
             setStatus("Connected with a partner!");
-            break;
-
-          case "start-call":
-            startCall(true);
+            if (clientId) {
+              const shouldInitiate = clientId.charCodeAt(0) % 2 === 0;
+              console.log(
+                `Client ${clientId} will ${
+                  shouldInitiate ? "initiate" : "wait for"
+                } the call`
+              );
+              if (shouldInitiate) {
+                setTimeout(() => startCall(true), 500);
+              } else {
+                startCall(false);
+              }
+            }
             break;
 
           case "offer":
+            console.log("Received offer, processing...");
             handleOffer(data);
             break;
 
           case "answer":
+            console.log("Received answer, processing...");
             handleAnswer(data);
             break;
 
           case "ice-candidate":
-            if (peerConnection && data.candidate) {
-              peerConnection.addIceCandidate(
-                new RTCIceCandidate(data.candidate)
-              );
-            }
+            console.log("Received ICE candidate");
+            handleIceCandidate(data);
             break;
 
           case "partnerLeft":
@@ -169,8 +178,27 @@
         }
       }
 
-      async function startCall(isCaller) {
+      function handleIceCandidate(data) {
+        if (peerConnection && data.candidate) {
+          try {
+            console.log(
+              "Adding ICE candidate:",
+              data.candidate.candidate.substring(0, 50) + "..."
+            );
+            peerConnection
+              .addIceCandidate(new RTCIceCandidate(data.candidate))
+              .catch((e) => console.error("Error adding ICE candidate:", e));
+          } catch (error) {
+            console.error("Error processing ICE candidate:", error);
+          }
+        }
+      }
+
+      async function startCall(isInitiator) {
+        console.log("Starting call, initiator:", isInitiator);
+
         if (peerConnection) {
+          console.log("Resetting existing connection");
           resetConnection();
         }
 
@@ -178,9 +206,6 @@
           iceServers: [
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" },
-            { urls: "stun:stun2.l.google.com:19302" },
-            { urls: "stun:stun3.l.google.com:19302" },
-            { urls: "stun:stun4.l.google.com:19302" },
             {
               urls: "turn:openrelay.metered.ca:80",
               username: "openrelayproject",
@@ -196,119 +221,114 @@
           iceCandidatePoolSize: 10,
         });
 
+        peerConnection.oniceconnectionstatechange = () => {
+          console.log(
+            "ICE connection state:",
+            peerConnection.iceConnectionState
+          );
+          if (
+            peerConnection.iceConnectionState === "connected" ||
+            peerConnection.iceConnectionState === "completed"
+          ) {
+            setStatus("Media connection established!");
+          } else if (peerConnection.iceConnectionState === "failed") {
+            setStatus("Connection failed. Try refreshing.");
+          }
+        };
+
+        peerConnection.onconnectionstatechange = () => {
+          console.log("Connection state:", peerConnection.connectionState);
+          if (peerConnection.connectionState === "connected") {
+            setStatus("Connected!");
+          } else if (peerConnection.connectionState === "failed") {
+            setStatus("Connection failed. Try refreshing.");
+          }
+        };
+
+        peerConnection.onsignalingstatechange = () => {
+          console.log("Signaling state:", peerConnection.signalingState);
+        };
+
+        peerConnection.onicecandidate = (event) => {
+          if (
+            event.candidate &&
+            socket &&
+            socket.readyState === WebSocket.OPEN
+          ) {
+            console.log("Sending ICE candidate");
+            socket.send(
+              JSON.stringify({
+                type: "ice-candidate",
+                candidate: event.candidate,
+              })
+            );
+          }
+        };
+
+        peerConnection.ontrack = (event) => {
+          console.log("Received remote track!", event.streams);
+          if (event.streams && event.streams[0]) {
+            console.log("Setting remote video source");
+            remoteVideo.srcObject = event.streams[0];
+            showPlaceholder(false);
+          }
+        };
+
         if (localStream) {
+          console.log("Adding local tracks to connection");
           localStream.getTracks().forEach((track) => {
-            if (localStream && peerConnection) {
-              peerConnection.addTrack(track, localStream);
-            }
+            peerConnection.addTrack(track, localStream);
           });
         }
 
-        if (peerConnection) {
-          peerConnection.ontrack = (event) => {
-            if (event.streams[0]) {
-              remoteVideo.srcObject = event.streams[0];
-              showPlaceholder(false);
-            }
-          };
+        if (isInitiator) {
+          try {
+            console.log("Creating offer");
+            const offerOptions = {
+              offerToReceiveAudio: true,
+              offerToReceiveVideo: true,
+            };
 
-          peerConnection.onicecandidate = (event) => {
-            if (event.candidate && socket) {
+            const offer = await peerConnection.createOffer(offerOptions);
+            console.log("Setting local description (offer)");
+            await peerConnection.setLocalDescription(offer);
+
+            console.log("Sending offer");
+            if (socket && socket.readyState === WebSocket.OPEN) {
               socket.send(
                 JSON.stringify({
-                  type: "ice-candidate",
-                  candidate: event.candidate,
+                  type: "offer",
+                  sdp: peerConnection.localDescription,
                 })
               );
             }
-          };
-
-          peerConnection.onconnectionstatechange = () => {
-            console.log("Connection state:", peerConnection.connectionState);
-            if (
-              peerConnection &&
-              peerConnection.connectionState === "connected"
-            ) {
-              setStatus("Connected!");
-            }
-          };
-
-          peerConnection.onsignalingstatechange = () => {
-            console.log("Signaling state:", peerConnection.signalingState);
-          };
-
-          if (isCaller) {
-            try {
-              const offerOptions = {
-                offerToReceiveAudio: true,
-                offerToReceiveVideo: true,
-              };
-
-              const offer = await peerConnection.createOffer(offerOptions);
-              const highBitrateOffer = setMediaBitrates(offer);
-              await peerConnection.setLocalDescription(highBitrateOffer);
-
-              if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(
-                  JSON.stringify({
-                    type: "offer",
-                    sdp: peerConnection.localDescription,
-                  })
-                );
-              }
-            } catch (error) {
-              console.error("Error creating offer:", error);
-            }
+          } catch (error) {
+            console.error("Error creating offer:", error);
           }
         }
       }
 
-      function setMediaBitrates(sdp) {
-        if (!sdp) return sdp;
-
-        sdp.sdp = sdp.sdp.replace(
-          /a=mid:video\r\n/g,
-          "a=mid:video\r\nb=AS:2500\r\n"
-        );
-
-        sdp.sdp = sdp.sdp.replace(
-          /a=mid:audio\r\n/g,
-          "a=mid:audio\r\nb=AS:128\r\n"
-        );
-
-        return sdp;
-      }
-
       async function handleOffer(data) {
+        console.log("Handling offer");
         if (!peerConnection) {
+          console.log("Creating peer connection for answering");
           startCall(false);
         }
 
         if (peerConnection && data.sdp) {
           try {
-            console.log(
-              "Signaling state before setting remote offer:",
-              peerConnection.signalingState
-            );
-
+            console.log("Setting remote description (offer)");
             await peerConnection.setRemoteDescription(
               new RTCSessionDescription(data.sdp)
             );
 
-            console.log(
-              "Signaling state after setting remote offer:",
-              peerConnection.signalingState
-            );
-
+            console.log("Creating answer");
             const answer = await peerConnection.createAnswer();
-            const highBitrateAnswer = setMediaBitrates(answer);
-            await peerConnection.setLocalDescription(highBitrateAnswer);
 
-            console.log(
-              "Signaling state after setting local answer:",
-              peerConnection.signalingState
-            );
+            console.log("Setting local description (answer)");
+            await peerConnection.setLocalDescription(answer);
 
+            console.log("Sending answer");
             if (socket && socket.readyState === WebSocket.OPEN) {
               socket.send(
                 JSON.stringify({
@@ -324,20 +344,13 @@
       }
 
       async function handleAnswer(data) {
+        console.log("Handling answer");
         if (peerConnection && data.sdp) {
           try {
-            console.log(
-              "Signaling state before setting remote answer:",
-              peerConnection.signalingState
-            );
-
             if (peerConnection.signalingState === "have-local-offer") {
+              console.log("Setting remote description (answer)");
               await peerConnection.setRemoteDescription(
                 new RTCSessionDescription(data.sdp)
-              );
-              console.log(
-                "Signaling state after setting remote answer:",
-                peerConnection.signalingState
               );
             } else {
               console.warn(
@@ -352,11 +365,21 @@
       }
 
       function resetConnection() {
+        console.log("Resetting connection");
         if (peerConnection) {
+          peerConnection.ontrack = null;
+          peerConnection.onicecandidate = null;
+          peerConnection.oniceconnectionstatechange = null;
+          peerConnection.onconnectionstatechange = null;
+          peerConnection.onsignalingstatechange = null;
           peerConnection.close();
           peerConnection = null;
         }
-        remoteVideo.srcObject = null;
+
+        if (remoteVideo.srcObject) {
+          remoteVideo.srcObject.getTracks().forEach((track) => track.stop());
+          remoteVideo.srcObject = null;
+        }
       }
 
       function cleanup() {
@@ -375,6 +398,7 @@
       }
 
       function showPlaceholder(show) {
+        console.log("Setting placeholder visibility:", show);
         placeholder.style.display = show ? "flex" : "none";
       }
     </script>
